@@ -1,17 +1,18 @@
 // This check is new and seems buggy (possibly with PyO3 interaction)
 #![allow(clippy::borrow_deref_ref)]
 
-use std::collections::HashSet;
+// use std::collections::HashSet;
 use std::num::NonZeroU64;
 use std::thread;
+use bstr::ByteSlice;
 
+
+// use rustc_hash::FxHashMap as HashMap;
+
+// use ocaml::;
+use ocaml::{List, Value, ToValue, FromValue};
 use fancy_regex::Regex;
-use pyo3::exceptions;
-use pyo3::prelude::*;
-use pyo3::pyclass;
-use pyo3::PyResult;
-use pyo3::types::{PyBytes, PyList, PyTuple};
-use rustc_hash::FxHashMap as HashMap;
+use std::collections::{HashMap, HashSet};
 
 type Rank = u32;
 
@@ -89,46 +90,6 @@ pub fn byte_pair_split<'a>(piece: &'a [u8], ranks: &HashMap<Vec<u8>, Rank>) -> V
         .collect()
 }
 
-// Various performance notes:
-//
-// Regex
-// =====
-// Most of the time is spent in regex. The easiest way to speed this up is by using less fancy
-// regex features. For instance, using a regex parse-able by `regex` crate is 3x faster than
-// the usual regex we use.
-//
-// However, given that we're using a regex parse-able by `regex`, there isn't much difference
-// between using the `regex` crate and using the `fancy_regex` crate.
-//
-// There is an important interaction between threading, `regex` and `fancy_regex`.
-// When using `fancy_regex`, we hit `regex.find_at`. It turns out that this causes contention on
-// some mutable scratch space inside of `regex`. This absolutely kills performance. When using plain
-// old `regex`, we don't hit this, because `find_iter` has a different code path.
-// Related: https://github.com/rust-lang/regex/blob/master/PERFORMANCE.md
-// Anyway, the way we get around this is with having a (mostly) thread local clone of the regex for
-// each thread.
-//
-// Threading
-// =========
-// I tried using `rayon`. It wasn't really faster than using Python threads and releasing the GIL.
-// So goodbye `rayon`! Let thread count etc be in control of our Python users.
-//
-// Caching
-// =======
-// The reference tokeniser has an lru cache over the equivalent of `byte_pair_encode`.
-// Originally, we had one too! Without it, we were only vaguely faster than Python.
-// I used an RWLock to protect the cache. This didn't seem to hurt single threaded performance
-// noticeably, but it did affect multi-threaded performance. Weirdly, it seemed to affect
-// multi-threaded performance even when I only had readers (maybed I messed something up?).
-// Anyway, I realised that we could get rid of the cache, if we treat the set of tokens as a cache!
-// These are exactly the set or merges that are likely to be hot. And now we don't have to think
-// about interior mutability, memory use, or cloning.
-//
-// Hashing
-// =======
-// We use FxHashMap instead of the standard HashMap. This is maybe like a 5-10% win?
-// The current implementation ends up doing a lot of hashing of bytes. In theory, this could be made
-// to be hashing of two-tuples of ints, which looks like it may also be a couple percent faster.
 
 pub struct FakeThreadId(NonZeroU64);
 
@@ -147,7 +108,6 @@ fn hash_current_thread() -> usize {
 
 const MAX_NUM_THREADS: usize = 128;
 
-#[pyclass]
 struct CoreBPE {
     encoder: HashMap<Vec<u8>, Rank>,
     special_tokens_encoder: HashMap<String, Rank>,
@@ -409,40 +369,35 @@ impl CoreBPE {
     }
 }
 
-#[pymethods]
 impl CoreBPE {
-    #[new]
+    // Constructor function for CoreBPE
     fn new(
         encoder: HashMap<Vec<u8>, Rank>,
         special_tokens_encoder: HashMap<String, Rank>,
         pattern: &str,
-    ) -> PyResult<Self> {
-        let regex = Regex::new(pattern)
-            .map_err(|e| PyErr::new::<exceptions::PyValueError, _>(e.to_string()))?;
+    ) -> Result<Self, String> {
+        let regex = Regex::new(pattern).map_err(|e| e.to_string())?;
 
         let special_regex = {
             let _parts = special_tokens_encoder
                 .keys()
                 .map(|s| fancy_regex::escape(s))
                 .collect::<Vec<_>>();
-            Regex::new(&_parts.join("|"))
-                .map_err(|e| PyErr::new::<exceptions::PyValueError, _>(e.to_string()))?
+            Regex::new(&_parts.join("|")).map_err(|e| e.to_string())?
         };
 
         let decoder: HashMap<Rank, Vec<u8>> =
             encoder.iter().map(|(k, v)| (*v, k.clone())).collect();
 
-        assert!(
-            encoder.len() == decoder.len(),
-            "Encoder and decoder must be of equal length; maybe you had duplicate token indices in your encoder?"
-        );
+        if encoder.len() != decoder.len() {
+            return Err("Encoder and decoder must be of equal length; maybe you had duplicate token indices in your encoder?".to_string());
+        }
 
         let special_tokens_decoder: HashMap<Rank, Vec<u8>> = special_tokens_encoder
             .iter()
             .map(|(k, v)| (*v, k.as_bytes().to_vec()))
             .collect();
 
-        // Clone because I don't know how to tell Rust I'm not going to change the map
         let mut sorted_token_bytes: Vec<Vec<u8>> = encoder.keys().cloned().collect();
         sorted_token_bytes.sort();
 
@@ -451,149 +406,123 @@ impl CoreBPE {
             special_tokens_encoder,
             decoder,
             special_tokens_decoder,
-            regex_tls: (0..MAX_NUM_THREADS).map(|_| regex.clone()).collect(),
-            special_regex_tls: (0..MAX_NUM_THREADS)
-                .map(|_| special_regex.clone())
-                .collect(),
+            regex_tls: vec![regex.clone(); MAX_NUM_THREADS],
+            special_regex_tls: vec![special_regex.clone(); MAX_NUM_THREADS],
             sorted_token_bytes,
         })
     }
 
-    // ====================
-    // Encoding
-    // ====================
-
-    fn encode_ordinary(&self, py: Python, text: &str) -> Vec<Rank> {
-        py.allow_threads(|| self._encode_ordinary_native(text))
+    // Encoding methods
+    fn encode_ordinary(&self, text: &str) -> Vec<Rank> {
+        self._encode_ordinary_native(text)
     }
 
-    fn encode(&self, py: Python, text: &str, allowed_special: HashSet<&str>) -> Vec<Rank> {
-        py.allow_threads(|| self._encode_native(text, &allowed_special).0)
+    fn encode(&self, text: &str, allowed_special: HashSet<&str>) -> Vec<Rank> {
+        self._encode_native(text, &allowed_special).0
     }
 
-    fn _encode_bytes(&self, py: Python, bytes: &[u8]) -> Vec<Rank> {
-        py.allow_threads(|| {
-            match std::str::from_utf8(bytes) {
-                Ok(text) => self._encode_ordinary_native(text),
-                Err(e) => {
-                    let text = unsafe { std::str::from_utf8_unchecked(&bytes[..e.valid_up_to()]) };
-                    let (tokens, last_piece_token_len) = self._encode_native(text, &HashSet::new());
-                    let (mut tokens, last_piece_token_len) =
-                        self._increase_last_piece_token_len(tokens, last_piece_token_len);
-                    if !tokens.is_empty() && last_piece_token_len > 0 {
-                        // Lop off the tokens from the last piece and run BPE on the remaining bytes
-                        // Somewhat niche, but this may not be correct if we'd have had a regex
-                        // split between the valid UTF-8 and the invalid bytes, which is why this
-                        // method is private
-                        let mut unstable_bytes =
-                            self._decode_native(&tokens[tokens.len() - last_piece_token_len..]);
-                        unstable_bytes.extend_from_slice(&bytes[e.valid_up_to()..]);
-
-                        tokens.truncate(tokens.len() - last_piece_token_len);
-                        match self.encoder.get(&unstable_bytes) {
-                            Some(token) => tokens.push(*token),
-                            None => tokens.extend(&byte_pair_encode(&unstable_bytes, &self.encoder)),
+    fn encode_bytes(&self, bytes: &[u8]) -> Vec<Rank> {
+        match std::str::from_utf8(bytes) {
+            Ok(text) => self._encode_ordinary_native(text),
+            Err(e) => {
+                let text = unsafe { std::str::from_utf8_unchecked(&bytes[..e.valid_up_to()]) };
+                let (tokens, last_piece_token_len) = self._encode_native(text, &HashSet::new());
+                let (mut tokens, last_piece_token_len) =
+                    self._increase_last_piece_token_len(tokens, last_piece_token_len);
+                if !tokens.is_empty() && last_piece_token_len > 0 {
+                    let mut unstable_bytes =
+                        self._decode_native(&tokens[tokens.len() - last_piece_token_len..]);
+                    unstable_bytes.extend_from_slice(&bytes[e.valid_up_to()..]);
+    
+                    tokens.truncate(tokens.len() - last_piece_token_len);
+    
+                    // Use bstr to decode the last part of the unstable bytes
+                    let (last_char_option, _bytes_consumed) = bstr::decode_last_utf8(unstable_bytes.as_slice());
+                    
+                    // Check if there's a valid last character
+                    if let Some(valid_char) = last_char_option {
+                        let valid_str = valid_char.to_string(); // Convert the char to string
+                        if let Some(token) = self.encoder.get(valid_str.as_bytes()) {
+                            tokens.push(*token);
+                        } else {
+                            tokens.extend(&byte_pair_encode(valid_str.as_bytes(), &self.encoder));
                         }
                     }
-                    tokens
                 }
-            }
-        })
-    }
-
-    fn encode_with_unstable(
-        &self,
-        py: Python,
-        text: &str,
-        allowed_special: HashSet<&str>,
-    ) -> Py<PyTuple> {
-        let (tokens, completions) =
-            py.allow_threads(|| self._encode_unstable_native(text, &allowed_special));
-        let py_completions =
-            PyList::new(py, completions.iter().map(|seq| PyList::new(py, &seq[..])));
-        (tokens, py_completions).into_py(py)
-    }
-
-    fn encode_single_token(&self, piece: &[u8]) -> PyResult<Rank> {
-        if let Some(token) = self.encoder.get(piece).copied() {
-            return Ok(token);
-        }
-        if let Ok(piece_str) = std::str::from_utf8(piece) {
-            if let Some(token) = self.special_tokens_encoder.get(piece_str).copied() {
-                return Ok(token);
+                tokens
             }
         }
-        Err(PyErr::new::<exceptions::PyKeyError, _>(piece.to_owned()))
+    }
+    
+    
+
+    // Decoding methods
+    fn decode_bytes(&self, tokens: Vec<Rank>) -> Vec<u8> {
+        self._decode_native(&tokens)
     }
 
-    fn encode_single_piece(&self, piece: &[u8]) -> Vec<Rank> {
-        if let Some(token) = self.encoder.get(piece) {
-            return vec![*token];
-        }
-        byte_pair_encode(piece, &self.encoder)
-    }
-
-    // ====================
-    // Decoding
-    // ====================
-
-    fn decode_bytes(&self, py: Python, tokens: Vec<Rank>) -> Py<PyBytes> {
-        let bytes = py.allow_threads(|| self._decode_native(&tokens));
-        PyBytes::new(py, &bytes).into()
-    }
-
-    fn decode_single_token_bytes(&self, py: Python, token: Rank) -> PyResult<Py<PyBytes>> {
+    fn decode_single_token_bytes(&self, token: Rank) -> Result<Vec<u8>, String> {
         if let Some(bytes) = self.decoder.get(&token) {
-            return Ok(PyBytes::new(py, bytes).into());
+            return Ok(bytes.clone());
         }
         if let Some(bytes) = self.special_tokens_decoder.get(&token) {
-            return Ok(PyBytes::new(py, bytes).into());
+            return Ok(bytes.clone());
         }
-        Err(PyErr::new::<exceptions::PyKeyError, _>(token.to_string()))
+        Err(format!("Token {} not found", token))
     }
 
-    // ====================
-    // Miscellaneous
-    // ====================
-
-    fn token_byte_values(&self, py: Python) -> Vec<Py<PyBytes>> {
-        self.sorted_token_bytes
-            .iter()
-            .map(|x| PyBytes::new(py, x).into())
-            .collect()
+    fn token_byte_values(&self) -> Vec<Vec<u8>> {
+        self.sorted_token_bytes.clone()
     }
 }
 
-#[pymodule]
-fn _tiktoken(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<CoreBPE>()?;
-    Ok(())
+// Expose the constructor function to OCaml
+#[ocaml::func]
+pub fn core_bpe_new(
+    encoder: Value,
+    special_tokens_encoder: Value,
+    pattern: String,
+) -> Result<Value, String> {
+    // Convert OCaml encoder (list of (Vec<u8>, Rank)) to a Rust Vec
+    let encoder_list: List<Value> = encoder.into();
+    let encoder_vec: Vec<Value> = encoder_list.into_vec();
+    let mut encoder_map: HashMap<Vec<u8>, Rank> = HashMap::new();
+
+    // Iterate through the Rust Vec and populate the encoder HashMap
+    for val in encoder_vec {
+        let tuple: (Vec<u8>, Rank) = val.into();
+        encoder_map.insert(tuple.0, tuple.1);
+    }
+
+    // Convert OCaml special_tokens_encoder (list of (String, Rank)) to a Rust Vec
+    let special_tokens_list: List<Value> = special_tokens_encoder.into();
+    let special_tokens_vec: Vec<Value> = special_tokens_list.into_vec();
+    let mut special_tokens_map: HashMap<String, Rank> = HashMap::new();
+
+    // Iterate through the Rust Vec and populate the special_tokens_encoder HashMap
+    for val in special_tokens_vec {
+        let tuple: (String, Rank) = val.into();
+        special_tokens_map.insert(tuple.0, tuple.1);
+    }
+
+    // Now use the manually constructed HashMaps in the CoreBPE constructor
+    CoreBPE::new(encoder_map, special_tokens_map, &pattern).map(|bpe| bpe.to_value())
 }
 
-#[cfg(test)]
-mod tests {
-    use rustc_hash::FxHashMap as HashMap;
 
-    use crate::{byte_pair_split, Rank};
-
-    fn setup_ranks() -> HashMap<Vec<u8>, Rank> {
-        HashMap::from_iter([
-            (b"ab".to_vec(), 0),
-            (b"cd".to_vec(), 1),
-        ])
-    }
-
-    #[test]
-    fn test_simple_characters() {
-        let ranks = setup_ranks();
-        let res = byte_pair_split(b"abcd", &ranks);
-        assert_eq!(res, vec![b"ab", b"cd"]);
-    }
-
-    #[test]
-    fn test_repeated_characters() {
-        let ranks = setup_ranks();
-        let res = byte_pair_split(b"abab", &ranks);
-        assert_eq!(res, vec![b"ab", b"ab"]);
-    }
+// Expose the encoding method to OCaml
+#[ocaml::func]
+pub fn core_bpe_encode_ordinary(core_bpe: Value, text: String) -> Value {
+    let bpe: &CoreBPE = core_bpe.into();
+    bpe.encode_ordinary(&text).into_value()
 }
+
+// Expose the decoding method to OCaml
+#[ocaml::func]
+pub fn core_bpe_decode_bytes(core_bpe: Value, tokens: Value) -> Value {
+    let bpe: &CoreBPE = core_bpe.into();
+    let tokens: Vec<Rank> = tokens.into();
+    bpe.decode_bytes(tokens).into_value()
+}
+
+

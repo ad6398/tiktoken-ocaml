@@ -1,5 +1,5 @@
 # tiktoken-ocaml
-This is my noob attempt to create an Ocaml version of original tiktoken library. I started with changing original rust binders written for python to be called from a OCaml program. I could not write a reasonable data type converter(b/w Rust and Ocaml) for original 'CoreBPE' class/object so instead of exchanging CoreBPE objects they exchange an ID( `int`) which binds to  a specific CoreBPE object. Rust creates these objects and store in the Key-Value with IDs as key.
+This is my noob attempt to create an Ocaml version of [OpenAIs tiktoken](https://github.com/openai/tiktoken) library. I started with changing original rust binders written for python to be called from a OCaml program. I could not write a reasonable data type converter(b/w Rust and Ocaml) for original 'CoreBPE' class/object so instead of exchanging CoreBPE objects they exchange an ID( `int`) which binds to  a specific CoreBPE object. Rust creates these objects and store in the Key-Value with IDs as key.
 
 Inspired from this project using [ocaml-rs](https://github.com/zshipko/ocaml-rs) to call Rust functions from OCaml.
 

@@ -1,0 +1,17 @@
+(rule
+ (targets libocaml_rust_tiktok.a dllocaml_rust_tiktok.so)
+ (deps (glob_files *.rs))
+ (action
+  (progn
+   (run sh -c "cd %{project_root}/../.. && cargo build --release")
+   (run sh -c
+     "mv %{project_root}/../../target/release/libocaml_rust_tiktok.so ./dllocaml_rust_tiktok.so 2> /dev/null || \
+      mv %{project_root}/../../target/release/libocaml_rust_tiktok.dylib ./dllocaml_rust_tiktok.so")
+   (run mv %{project_root}/../../target/release/libocaml_rust_tiktok.a libocaml_rust_tiktok.a))))
+
+(library
+ (name ocaml_rust_tiktok)
+ (public_name ocaml-rust-tiktok)
+ (foreign_archives ocaml_rust_tiktok)
+ (c_library_flags
+  (-lpthread -lc -lm)))

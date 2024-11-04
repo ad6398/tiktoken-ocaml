@@ -1,0 +1,43 @@
+(lang dune 3.16)
+(name ocaml-rust-tiktok)
+(sections
+ (lib .)
+ (libexec .)
+ (doc ../../doc/ocaml-rust-tiktok)
+ (stublibs ../stublibs))
+(files
+ (lib
+  (META
+   dune-package
+   libocaml_rust_tiktok.a
+   ocaml_rust_tiktok.a
+   ocaml_rust_tiktok.cma
+   ocaml_rust_tiktok.cmi
+   ocaml_rust_tiktok.cmt
+   ocaml_rust_tiktok.cmti
+   ocaml_rust_tiktok.cmx
+   ocaml_rust_tiktok.cmxa
+   ocaml_rust_tiktok.ml
+   ocaml_rust_tiktok.mli
+   opam))
+ (libexec (ocaml_rust_tiktok.cmxs))
+ (doc (LICENSE.md README.md))
+ (stublibs (dllocaml_rust_tiktok.so)))
+(library
+ (name ocaml-rust-tiktok)
+ (kind normal)
+ (archives (byte ocaml_rust_tiktok.cma) (native ocaml_rust_tiktok.cmxa))
+ (plugins (byte ocaml_rust_tiktok.cma) (native ocaml_rust_tiktok.cmxs))
+ (foreign_archives (archives (for all) (files libocaml_rust_tiktok.a)))
+ (foreign_dll_files ../stublibs/dllocaml_rust_tiktok.so)
+ (native_archives ocaml_rust_tiktok.a)
+ (main_module_name Ocaml_rust_tiktok)
+ (modes byte native)
+ (modules
+  (singleton
+   (obj_name ocaml_rust_tiktok)
+   (visibility public)
+   (source
+    (path Ocaml_rust_tiktok)
+    (intf (path ocaml_rust_tiktok.mli))
+    (impl (path ocaml_rust_tiktok.ml))))))

@@ -1,0 +1,1 @@
+{"rustc":5620745326244611454,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[18176358276016997228,"build_script_build",false,13559211168283840395]],"local":[{"Precalculated":"1727214708.483580183s (src/ocaml_rust_tiktok.ml)"}],"rustflags":["-C","link-args=-Wl,-undefined,dynamic_lookup"],"metadata":0,"config":0,"compile_kind":0}

@@ -1,0 +1,6 @@
+description = ""
+requires = ""
+archive(byte) = "ocaml_rust_tiktok.cma"
+archive(native) = "ocaml_rust_tiktok.cmxa"
+plugin(byte) = "ocaml_rust_tiktok.cma"
+plugin(native) = "ocaml_rust_tiktok.cmxs"

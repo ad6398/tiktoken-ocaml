@@ -1,0 +1,22 @@
+[package]
+name = "ocaml-rust-tiktok"
+version = "0.1.0"
+authors = ["Zach Shipko <zachshipko@gmail.com>"]
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib","cdylib"]
+
+
+[build-dependencies]
+ocaml-build = {version = "^1.0.0"}
+
+
+[dependencies]
+ocaml = {version = "^1.0.0"}            # Add the latest version compatible with your setup
+fancy-regex = "0.13.0"       # If you use fancy_regex in your code
+bstr = "0.2"
+lazy_static = "1.4"
+
+# Or use the development version:
+# ocaml = {git = "https://github.com/zshipko/ocaml-rs.git"}

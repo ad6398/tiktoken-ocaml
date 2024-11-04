@@ -1,0 +1,86 @@
+# dune build
+# OCAMLPARAM: unset
+# Shared cache: disabled
+# Shared cache location: /home/ak11089/.cache/dune/db
+# Workspace root: /home/ak11089/projects/ocaml-rust-tiktok
+# Auto-detected concurrency: 2
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /home/ak11089/.opam/4.10.0/bin/ocamlc.opt -config > /tmp/dune_9a43c9_output
+$ (cd _build/default && /home/ak11089/.opam/4.10.0/bin/ocamlc.opt -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs -g -bin-annot -I src/.ocaml_rust_tiktok.objs/byte -no-alias-deps -opaque -o src/.ocaml_rust_tiktok.objs/byte/ocaml_rust_tiktok.cmi -c -intf src/ocaml_rust_tiktok.mli)
+> File "src/ocaml_rust_tiktok.mli", line 7, characters 29-31:
+> 7 | external core_bpe_new: Value -> Value -> string -> int = "core_bpe_new"
+>                                  ^^
+> Error: Syntax error
+[2]
+$ (cd _build/default/src && /usr/bin/sh -c 'cd ../../.. && cargo build --release')
+>    Compiling ocaml-rust-tiktok v0.1.0 (/home/ak11089/projects/ocaml-rust-tiktok)
+> warning: unused import: `FromValue`
+>  --> src/lib.rs:8:26
+>   |
+> 8 | use ocaml::{List, Value, FromValue, ToValue, Runtime};
+>   |                          ^^^^^^^^^
+>   |
+>   = note: `#[warn(unused_imports)]` on by default
+>
+> warning: unused import: `bstr::ByteSlice`
+>  --> src/lib.rs:5:5
+>   |
+> 5 | use bstr::ByteSlice;
+>   |     ^^^^^^^^^^^^^^^
+>
+> warning: fields `special_tokens_encoder`, `special_regex_tls`, and `sorted_token_bytes` are never read
+>   --> src/lib.rs:93:5
+>    |
+> 91 | struct CoreBPE {
+>    |        ------- fields in this struct
+> 92 |     encoder: HashMap<Vec<u8>, Rank>,
+> 93 |     special_tokens_encoder: HashMap<String, Rank>,
+>    |     ^^^^^^^^^^^^^^^^^^^^^^
+> ...
+> 97 |     special_regex_tls: Vec<Regex>,
+>    |     ^^^^^^^^^^^^^^^^^
+> 98 |     sorted_token_bytes: Vec<Vec<u8>>,
+>    |     ^^^^^^^^^^^^^^^^^^
+>    |
+>    = note: `CoreBPE` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+>    = note: `#[warn(dead_code)]` on by default
+>
+> warning: multiple methods are never used
+>    --> src/lib.rs:340:12
+>     |
+> 101 | impl CoreBPE {
+>     | ------------ methods in this implementation
+> ...
+> 340 |     pub fn encode(&self, text: &str, allowed_special: HashSet<&str>) -> Vec<Rank> {
+>     |            ^^^^^^
+> ...
+> 345 |     pub fn encode_bytes(&self, bytes: &[u8]) -> Vec<Rank> {
+>     |            ^^^^^^^^^^^^
+> ...
+> 369 |     pub fn encode_with_unstable(
+>     |            ^^^^^^^^^^^^^^^^^^^^
+> ...
+> 380 |     pub fn encode_single_token(&self, piece: &[u8]) -> Result<Rank, String> {
+>     |            ^^^^^^^^^^^^^^^^^^^
+> ...
+> 392 |     pub fn encode_single_piece(&self, piece: &[u8]) -> Vec<Rank> {
+>     |            ^^^^^^^^^^^^^^^^^^^
+> ...
+> 403 |     pub fn decode_single_token_bytes(&self, token: Rank) -> Result<Vec<u8>, String> {
+>     |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+> ...
+> 413 |     pub fn token_byte_values(&self) -> Vec<Vec<u8>> {
+>     |            ^^^^^^^^^^^^^^^^^
+>
+> warning: `ocaml-rust-tiktok` (lib) generated 4 warnings (run `cargo fix --lib -p ocaml-rust-tiktok` to apply 1 suggestion)
+>     Finished `release` profile [optimized] target(s) in 1.88s
+$ (cd _build/default/src && /usr/bin/sh -c 'mv ../../../target/release/libocaml_rust_tiktok.so ./dllocaml_rust_tiktok.so 2> /dev/null || mv ../../../target/release/libocaml_rust_tiktok.dylib ./dllocaml_rust_tiktok.so')
+$ (cd _build/default/src && /usr/bin/mv ../../../target/release/libocaml_rust_tiktok.a libocaml_rust_tiktok.a)

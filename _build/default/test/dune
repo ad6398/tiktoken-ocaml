@@ -1,0 +1,9 @@
+(executables
+ (libraries ocaml-rust-tiktok)
+ (names test)
+ (modules test))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test.exe)))
